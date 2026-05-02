@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8"/>
+    <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+    <title>Qurban QR Pro - Sistem Administrasi</title>
+    
+    <!-- External Scripts -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet"/>
+
+    <style>
+        body {
+            background: radial-gradient(circle at top right, #1e1b4b, #000000);
+            min-height: 100vh;
+            color: white;
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            padding: 1rem;
+        }
+        @media (min-width: 768px) {
+            body { padding: 2rem; }
+        }
+        .glass-card {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 1.5rem;
+        }
+        .neon-text {
+            text-shadow: 0 0 10px rgba(168, 85, 247, 0.8);
+        }
+        .loader {
+            border: 4px solid rgba(255,255,255,0.1);
+            border-left-color: #a855f7;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        .tab-content { display: none; }
+        .tab-content.active { display: block; animation: fadeIn 0.3s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        #reader {
+            width: 100% !important; 
+            max-width: 350px; 
+            margin: 0 auto;  
+            border-radius: 1rem;
+            overflow: hidden;
+            border: 2px solid rgba(168, 85, 247, 0.3);
+        }
+        
+        #reader video {
+            object-fit: cover !important;
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Petugas Login Overlay -->
+    <div class="fixed inset-0 bg-black bg-opacity-90 z-50 flex items-center justify-center p-6" id="loginOverlay">
+        <div class="glass-card p-8 w-full max-w-md text-center">
+            <i class="fas fa-user-shield text-5xl mb-4 text-purple-500"></i>
+            <h2 class="text-2xl font-bold mb-2">Identitas Petugas</h2>
+            <p class="text-gray-400 mb-6 text-sm">Masukkan nama Anda untuk memulai sesi administrasi.</p>
+            <input class="w-full bg-white/10 border border-white/20 rounded-lg p-3 mb-4 focus:outline-none focus:ring-2 focus:ring-purple-500 text-white" id="inputPetugas" placeholder="Nama Petugas..." type="text"/>
+            <button class="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 rounded-lg transition" onclick="savePetugas()">Mulai Bertugas</button>
+        </div>
+    </div>
+
+    <!-- Main Container -->
+    <div class="max-w-4xl mx-auto">
+        
+        <!-- Header -->
+        <header class="flex justify-between items-center mb-8">
+            <div>
+                <h1 class="text-3xl font-black neon-text italic tracking-tighter uppercase">QURBAN At-Taubah <span class="text-purple-500">PRO</span></h1>
+                <p class="text-xs text-gray-400 uppercase tracking-widest" id="displayPetugas">Petugas: -</p>
+            </div>
+            <button class="text-gray-400 hover:text-white bg-white/5 p-3 rounded-full" onclick="resetPetugas()"><i class="fas fa-sign-out-alt"></i></button>
+        </header>
+
+        <!-- Navigation Tabs -->
+        <nav class="flex gap-2 mb-8 bg-white/5 p-1 rounded-2xl">
+            <button class="tab-btn flex-1 py-3 rounded-xl transition text-sm font-medium bg-purple-600 text-white" id="btn-dashboard" onclick="showTab('dashboard')">
+                <i class="fas fa-chart-pie mr-2"></i> Status
+            </button>
+            <button class="tab-btn flex-1 py-3 rounded-xl transition text-sm font-medium text-gray-400" id="btn-scanner" onclick="showTab('scanner')">
+                <i class="fas fa-qrcode mr-2"></i> Scan
+            </button>
+            <button class="tab-btn flex-1 py-3 rounded-xl transition text-sm font-medium text-gray-400" id="btn-generator" onclick="showTab('generator')">
+                <i class="fas fa-print mr-2"></i> Cetak
+            </button>
+        </nav>
+
+        <!-- Dashboard Tab -->
+        <div class="tab-content active" id="tab-dashboard">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+                <div class="glass-card p-6 text-center">
+                    <p class="text-gray-400 text-sm mb-1">Total Kupon</p>
+                    <h3 class="text-4xl font-bold" id="statTotal">0</h3>
+                </div>
+                <div class="glass-card p-6 text-center border-b-4 border-green-500">
+                    <p class="text-gray-400 text-sm mb-1">Sudah Diambil</p>
+                    <h3 class="text-4xl font-bold text-green-400" id="statSudah">0</h3>
+                </div>
+                <div class="glass-card p-6 text-center border-b-4 border-purple-500">
+                    <p class="text-gray-400 text-sm mb-1">Belum Diambil</p>
+                    <h3 class="text-4xl font-bold text-purple-400" id="statSisa">0</h3>
+                </div>
+            </div>
+
+            <div class="glass-card p-6 mb-8">
+                <h4 class="font-bold mb-4 flex items-center">
+                    <i class="fas fa-tasks mr-2 text-purple-500"></i> Progress Distribusi
+                </h4>
+                <div class="w-full bg-white/10 rounded-full h-4">
+                    <div class="bg-gradient-to-r from-purple-600 to-pink-500 h-4 rounded-full transition-all duration-1000" id="progressBar" style="width: 0%"></div>
+                </div>
+            </div>
+
+            <div class="glass-card p-6">
+                <h4 class="font-bold mb-4 flex items-center">
+                    <i class="fas fa-history mr-2 text-purple-500"></i> Log Aktivitas Terakhir
+                </h4>
+                <div class="space-y-4" id="logContainer">
+                    <p class="text-gray-500 text-center text-sm">Memuat data...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Scanner Tab -->
+        <div class="tab-content" id="tab-scanner">
+            <div class="glass-card overflow-hidden bg-black/40">
+                <div id="reader"></div>
+                
+                <div class="p-6 text-center border-t border-white/10">
+                    <button class="w-full max-w-[250px] mx-auto mb-6 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-bold py-4 rounded-2xl transition shadow-lg flex items-center justify-center gap-3 active:scale-95" id="btnTriggerScan" onclick="manualTriggerScan()">
+                        <i class="fas fa-camera text-xl"></i> AMBIL SCAN
+                    </button>
+
+                    <p class="text-gray-400 text-xs uppercase tracking-widest">Status Deteksi: <span class="text-green-500" id="scanStatus">Aktif</span></p>
+                    <div class="mt-4 hidden p-6 rounded-xl border-2 transition-all" id="scanResult"></div>
+                </div>
+            </div>
+            
+            <div class="mt-4 glass-card p-4">
+                <div class="flex flex-col sm:flex-row gap-2">
+                    <input class="flex-1 bg-white/5 border border-white/10 rounded-lg p-3 text-center focus:ring-2 focus:ring-purple-500 outline-none text-white" id="manualId" placeholder="Input ID Manual / USB Scan..." type="text"/>
+                    <button class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-6 rounded-lg transition-all flex items-center justify-center" onclick="processManualScan()">
+                        <i class="fas fa-paper-plane mr-2"></i> KIRIM
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Generator Tab -->
+        <div class="tab-content" id="tab-generator">
+            <div class="glass-card p-8 text-center">
+                <i class="fas fa-file-pdf text-6xl text-red-500 mb-4"></i>
+                <h3 class="text-xl font-bold mb-2">Generate Kartu QR</h3>
+                <p class="text-gray-400 text-sm mb-6">Sistem akan membuat file PDF berisi kartu siap cetak sesuai data yang ada di sistem.</p>
+                <button class="bg-red-600 hover:bg-red-700 text-white px-8 py-3 rounded-full font-bold transition flex items-center justify-center mx-auto gap-2" onclick="generatePDF()">
+                    <i class="fas fa-download"></i> Export ke PDF
+                </button>
+            </div>
+            <div class="hidden" id="qrHiddenContainer"></div>
+        </div>
+
+    </div>
+
+    <!-- Global Loading Overlay -->
+    <div class="fixed inset-0 bg-black/50 backdrop-blur-sm z-[60] flex flex-col items-center justify-center hidden" id="globalLoader">
+        <div class="loader mb-4"></div>
+        <p class="font-medium text-white" id="loaderText">Memproses...</p>
+    </div>
+
+    <script>
+        // Masukkan URL Web App Script Google Anda di sini
+        const API_URL = "https://script.google.com/macros/s/AKfycbw9iqJw_SPYIejjSsjW78XktE_3s8qbnRWh6650HfE7h23DLvWQolp0NVGTZ6HDztEXIw/exec"; 
+        
+        let html5QrCode;
+        let isProcessing = false;
+        let lastScannedId = null;
+
+        // --- USB SCANNER AUTO-DETECT LOGIC ---
+        let barcodeBuffer = "";
+        let lastKeyTime = Date.now();
+
+        window.addEventListener("keydown", (e) => {
+            const currentTime = Date.now();
+            const isManualInput = document.activeElement.id === "manualId";
+
+            if (currentTime - lastKeyTime > 100) {
+                barcodeBuffer = ""; 
+            }
+
+            if (e.key === "Enter") {
+                if (barcodeBuffer.length > 0) {
+                    handleScan(barcodeBuffer);
+                    barcodeBuffer = "";
+                    e.preventDefault();
+                } else if (isManualInput) {
+                    processManualScan();
+                }
+            } else if (e.key.length === 1) {
+                barcodeBuffer += e.key;
+            }
+
+            lastKeyTime = currentTime;
+        });
+
+        // --- AUTH & INITIALIZATION ---
+        window.onload = () => {
+            checkAuth();
+            loadDashboard();
+        };
+
+        function checkAuth() {
+            const petugas = localStorage.getItem('qurban_petugas');
+            if (!petugas) {
+                document.getElementById('loginOverlay').classList.remove('hidden');
+            } else {
+                document.getElementById('loginOverlay').classList.add('hidden');
+                document.getElementById('displayPetugas').innerText = `Petugas: ${petugas}`;
+            }
+        }
+
+        function savePetugas() {
+            const val = document.getElementById('inputPetugas').value;
+            if (val.trim()) {
+                localStorage.setItem('qurban_petugas', val);
+                document.getElementById('loginOverlay').classList.add('hidden');
+                document.getElementById('displayPetugas').innerText = `Petugas: ${val}`;
+            }
+        }
+
+        function resetPetugas() {
+            if(confirm("Apakah Anda ingin mengakhiri sesi tugas?")) {
+                localStorage.removeItem('qurban_petugas');
+                location.reload();
+            }
+        }
+
+        // --- TAB NAVIGATION ---
+        function showTab(tabId) {
+            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(b => {
+                b.classList.remove('bg-purple-600', 'text-white');
+                b.classList.add('text-gray-400');
+            });
+
+            document.getElementById(`tab-${tabId}`).classList.add('active');
+            const btn = document.getElementById(`btn-${tabId}`);
+            btn.classList.add('bg-purple-600', 'text-white');
+            btn.classList.remove('text-gray-400');
+
+            if (tabId === 'scanner') startScanner();
+            else stopScanner();
+            
+            if (tabId === 'dashboard') loadDashboard();
+        }
+
+        // --- DASHBOARD LOGIC ---
+        async function loadDashboard() {
+            if (API_URL.includes("XXXXXXXXX")) {
+                updateDashboardUI({ total: 100, sudah: 45, sisa: 55, logs: [] });
+                return;
+            }
+            try {
+                const res = await fetch(`${API_URL}?action=getDashboard`);
+                const data = await res.json();
+                updateDashboardUI(data);
+            } catch (e) {
+                console.error("Dashboard Load Error:", e);
+                // Fallback UI mock jika API gagal
+                updateDashboardUI({ total: 0, sudah: 0, sisa: 0, logs: [] });
+            }
+        }
+
+        function updateDashboardUI(data) {
+            document.getElementById('statTotal').innerText = data.total || 0;
+            document.getElementById('statSudah').innerText = data.sudah || 0;
+            document.getElementById('statSisa').innerText = data.sisa || 0;
+            
+            const percent = (data.sudah / data.total * 100) || 0;
+            document.getElementById('progressBar').style.width = `${percent}%`;
+
+            const logHtml = data.logs && data.logs.length > 0 ? data.logs.map(log => `
+                <div class="flex items-center justify-between bg-white/5 p-3 rounded-lg border-l-4 border-purple-500">
+                    <div>
+                        <p class="font-bold text-sm text-white">${log.nama}</p>
+                        <p class="text-[10px] text-gray-400 uppercase tracking-tighter">${log.waktu} • Oleh ${log.petugas}</p>
+                    </div>
+                    <i class="fas fa-check-circle text-green-500"></i>
+                </div>
+            `).join('') : '<p class="text-center text-gray-500 text-sm py-4">Belum ada aktivitas distribusi hari ini</p>';
+            
+            document.getElementById('logContainer').innerHTML = logHtml;
+        }
+
+        // --- SCANNER LOGIC ---
+        function startScanner() {
+            const config = { fps: 15, qrbox: { width: 250, height: 250 } };
+            html5QrCode = new Html5Qrcode("reader");
+            html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess)
+                .catch(err => console.error("Scanner Error:", err));
+        }
+
+        function stopScanner() {
+            if (html5QrCode && html5QrCode.isScanning) {
+                html5QrCode.stop().catch(err => console.log(err));
+            }
+        }
+
+        async function onScanSuccess(decodedText) {
+            if (isProcessing || decodedText === lastScannedId) return;
+            handleScan(decodedText);
+        }
+
+        function processManualScan() {
+            const inputEl = document.getElementById('manualId');
+            const id = inputEl.value;
+            if (id.trim() && !isProcessing) {
+                handleScan(id);
+                inputEl.value = '';
+            }
+        }
+
+        async function handleScan(id) {
+            isProcessing = true;
+            lastScannedId = id;
+            showLoading(true);
+            
+            const petugas = localStorage.getItem('qurban_petugas');
+            const resultBox = document.getElementById('scanResult');
+
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    mode: 'no-cors', // Penting jika API di Sheets tidak handle CORS OPTIONS
+                    body: JSON.stringify({ action: 'scanQR', qrId: id, petugas: petugas })
+                });
+
+                // Catatan: Karena 'no-cors', kita tidak bisa baca response body langsung.
+                // Jika Anda ingin data balik, Web App Script harus diatur dengan return ContentService...
+                // Di sini kita asumsikan fetch standar (setelah Anda bypass CORS):
+                
+                const res = await fetch(`${API_URL}?action=scanQR&qrId=${id}&petugas=${petugas}`).then(r => r.json());
+
+                resultBox.className = "mt-4 p-6 rounded-xl border-2 text-center";
+                
+                if (res.success) {
+                    resultBox.classList.add('bg-green-500/20', 'border-green-500');
+                    resultBox.innerHTML = `
+                        <i class="fas fa-check-circle text-5xl text-green-500 mb-3"></i>
+                        <h4 class="text-2xl font-bold text-green-400">PENGAMBILAN BERHASIL</h4>
+                        <div class="my-4">
+                            <p class="text-xl font-bold text-white">${res.nama}</p>
+                            <p class="text-sm text-gray-300 italic">${res.alamat || ''}</p>
+                        </div>
+                        <p class="text-xs text-green-500 uppercase font-bold tracking-widest">Validasi Berhasil</p>
+                    `;
+                    triggerSuccessEffects();
+                } else {
+                    const isAlready = res.message === "SUDAH DIAMBIL";
+                    const color = isAlready ? 'yellow' : 'red';
+                    
+                    resultBox.classList.add(`bg-${color}-500/20`, `border-${color}-500`);
+                    resultBox.innerHTML = `
+                        <i class="fas ${isAlready ? 'fa-exclamation-triangle' : 'fa-times-circle'} text-5xl text-${color}-500 mb-3"></i>
+                        <h4 class="text-2xl font-bold text-${color}-500">${res.message}</h4>
+                        <div class="my-4">
+                            <p class="text-lg font-bold text-white">${res.data ? res.data.nama : 'ID Tidak Dikenal'}</p>
+                            <p class="text-sm text-gray-400">${res.data ? (res.data.alamat || '') : 'Periksa kembali kartu kupon'}</p>
+                        </div>
+                    `;
+                }
+
+                resultBox.classList.remove('hidden');
+
+            } catch (e) {
+                console.error("Scan Error:", e);
+                resultBox.className = "mt-4 p-6 rounded-xl border-2 border-red-500 bg-red-500/10 text-center";
+                resultBox.innerHTML = `<i class="fas fa-wifi-slash text-3xl mb-2"></i><p>Gagal menghubungi server. Periksa koneksi.</p>`;
+                resultBox.classList.remove('hidden');
+            } finally {
+                showLoading(false);
+                setTimeout(() => {
+                    isProcessing = false;
+                    lastScannedId = null;
+                }, 3000);
+            }
+        }
+
+        // --- PDF GENERATOR LOGIC ---
+        async function generatePDF() {
+            showLoading(true, "Mengambil data penerima...");
+            
+            try {
+                const res = await fetch(`${API_URL}?action=getAllData`);
+                const items = await res.json();
+                
+                showLoading(true, `Menyiapkan ${items.length} kartu...`);
+                
+                const { jsPDF } = window.jspdf;
+                const doc = new jsPDF('p', 'mm', 'a4');
+                
+                const cardWidth = 90;   
+                const cardHeight = 54;  
+                const marginX = 10;     
+                const marginY = 4;      
+                const gap = 4;          
+                
+                let x = marginX;
+                let y = marginY;
+                let count = 0;
+
+                const qrContainer = document.getElementById('qrHiddenContainer');
+
+                for (let i = 0; i < items.length; i++) {
+                    if (count > 0 && count % 10 === 0) {
+                        doc.addPage();
+                        x = marginX;
+                        y = marginY;
+                    }
+
+                    const item = items[i];
+                    
+                    // Design Kartu
+                    doc.setDrawColor(40, 40, 40);
+                    doc.roundedRect(x, y, cardWidth, cardHeight, 4, 4, 'S');
+                    
+                    // Header Kartu
+                    doc.setFillColor(30, 27, 75);
+                    doc.roundedRect(x, y, cardWidth, 12, 4, 4, 'F');
+                    doc.rect(x, y + 8, cardWidth, 4, 'F');
+
+                    doc.setTextColor(255, 255, 255);
+                    doc.setFontSize(10);
+                    doc.setFont("helvetica", "bold");
+                    doc.text("KUPON QURBAN At-Taubah 1447 H", x + cardWidth / 2, y + 7, { align: "center" });
+
+                    // Body Kartu
+                    doc.setTextColor(0, 0, 0);
+                    doc.setFontSize(8);
+                    doc.setFont("helvetica", "normal");
+                    doc.text("NAMA PENERIMA:", x + 5, y + 18);
+                    
+                    doc.setFontSize(11);
+                    doc.setFont("helvetica", "bold");
+                    const displayName = item.nama.toUpperCase();
+                    doc.text(displayName.length > 20 ? displayName.substring(0, 18) + ".." : displayName, x + 5, y + 24);
+
+                    doc.setFontSize(8);
+                    doc.setFont("helvetica", "normal");
+                    doc.text("WILAYAH / RT-RW:", x + 5, y + 30);
+                    doc.text(item.alamat || "RT 037 - RW 005", x + 5, y + 34);
+
+                    // Generate QR untuk PDF
+                    qrContainer.innerHTML = '';
+                    const qrDiv = document.createElement('div');
+                    qrContainer.appendChild(qrDiv);
+                    
+                    new QRCode(qrDiv, { 
+                        text: item.id.toString(), 
+                        width: 100, 
+                        height: 100 
+                    });
+                    
+                    await new Promise(r => setTimeout(r, 20));
+                    const canvas = qrDiv.querySelector('canvas');
+                    if(canvas) {
+                        const qrImg = canvas.toDataURL("image/png");
+                        doc.addImage(qrImg, 'PNG', x + 60, y + 18, 25, 25);
+                    }
+                    
+                    doc.setFontSize(6);
+                    doc.text(`ID: #${item.id}`, x + 72.5, y + 46, { align: "center" });
+                    doc.setFontSize(5);
+                    doc.text("SCAN UNTUK VALIDASI", x + 72.5, y + 49, { align: "center" });
+
+                    // Grid Positioning
+                    if ((count + 1) % 2 === 0) {
+                        x = marginX;
+                        y += cardHeight + gap; 
+                    } else {
+                        x += cardWidth + gap;
+                    }
+                    count++;
+                }
+                
+                doc.save(`Kupon_Qurban_Generated.pdf`);
+            } catch (e) {
+                console.error("PDF Error:", e);
+                alert("Gagal membuat PDF. Pastikan API URL sudah benar.");
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // --- UI HELPERS ---
+        function showLoading(show, text = "Memproses...") {
+            const loader = document.getElementById('globalLoader');
+            document.getElementById('loaderText').innerText = text;
+            loader.classList.toggle('hidden', !show);
+        }
+
+        function triggerSuccessEffects() {
+            confetti({
+                particleCount: 150,
+                spread: 70,
+                origin: { y: 0.6 },
+                colors: ['#a855f7', '#ec4899', '#ffffff']
+            });
+        }
+    </script>
+</body>
+</html>
